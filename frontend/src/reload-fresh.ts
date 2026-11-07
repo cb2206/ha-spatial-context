@@ -1,3 +1,5 @@
+import type { VersionInfo } from "./types";
+
 /**
  * Reload the page so the browser really fetches the current panel bundle.
  *
@@ -37,4 +39,15 @@ export async function reloadFresh(
     ),
   );
   reload();
+}
+
+/** Whether the backend needs a Home Assistant restart. Newer backends say
+ *  so directly (code fingerprints); older ones only report versions. */
+export function restartRequired(info: VersionInfo): boolean {
+  if (typeof info.restart_required === "boolean") return info.restart_required;
+  return Boolean(
+    info.loaded_version &&
+    info.installed_version &&
+    info.loaded_version !== info.installed_version,
+  );
 }

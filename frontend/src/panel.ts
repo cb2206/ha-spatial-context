@@ -122,7 +122,7 @@ import { metersPerUnit, panMap, rotateMapTo, zoomMap } from "./map/map-camera";
 import "./views/settings-page";
 import type { PropertyBuilding } from "./views/property-overlay";
 import { panelStyles } from "./panel-styles";
-import { panelBundleUrls, reloadFresh } from "./reload-fresh";
+import { panelBundleUrls, reloadFresh, restartRequired } from "./reload-fresh";
 import {
   APPEARANCES,
   APPEARANCE_ICONS,
@@ -1781,11 +1781,7 @@ export class SpatialContextPanel extends LitElement {
       notice = "restart";
     }
     if (info) {
-      if (
-        info.loaded_version &&
-        info.installed_version &&
-        info.loaded_version !== info.installed_version
-      ) {
+      if (restartRequired(info)) {
         notice = "restart";
       } else if (info.panel_build_id && info.panel_build_id !== __BUILD_ID__) {
         notice = "reload";

@@ -4,6 +4,8 @@ Notes for each release are also on the [releases page](https://github.com/Gremin
 
 ## Fork changes
 
+1.0.1-fork.9 (restart needed once): the panel only asks for a Home Assistant restart when the backend code changed. The backend fingerprints its Python files, services.yaml, translations and manifest (without the version) at startup and compares that with what is on disk. A panel-only release now just needs a page reload. Release notes say which kind each release is.
+
 1.0.1-fork.8: the "older panel" notice gets a Reload button. It refetches the panel bundle past the browser cache before reloading, so it works where keyboard shortcuts don't (the Home Assistant app, Safari without the Develop menu). The hint also explains how to reset the app's frontend cache.
 
 1.0.1-fork.7: an Appearance menu in the panel header (also on the Settings page) switches just this panel between System, Light and Dark, stored per browser. A separate Plan background option (Auto / White / None) puts a white sheet behind floor-plan images even on a dark panel, or none at all for transparent plans.

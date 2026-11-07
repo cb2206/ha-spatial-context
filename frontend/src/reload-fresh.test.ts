@@ -3,7 +3,9 @@ import {
   PANEL_BUNDLE_PATH,
   panelBundleUrls,
   reloadFresh,
+  restartRequired,
 } from "./reload-fresh";
+import type { VersionInfo } from "./types";
 
 const docWith = (srcs: string[]) =>
   ({
@@ -52,5 +54,31 @@ describe("reloadFresh", () => {
       reload,
     );
     expect(reload).toHaveBeenCalledOnce();
+  });
+});
+
+describe("restartRequired", () => {
+  const base: VersionInfo = {
+    loaded_version: "1.0.1-fork.8",
+    installed_version: "1.0.1-fork.9",
+    panel_build_id: "1.0.1-fork.9+x",
+  };
+
+  it("trusts the backend's answer, so a panel-only release needs no restart", () => {
+    expect(restartRequired({ ...base, restart_required: false })).toBe(false);
+    expect(
+      restartRequired({
+        ...base,
+        installed_version: base.loaded_version,
+        restart_required: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("falls back to comparing versions on an older backend", () => {
+    expect(restartRequired(base)).toBe(true);
+    expect(
+      restartRequired({ ...base, installed_version: base.loaded_version }),
+    ).toBe(false);
   });
 });
