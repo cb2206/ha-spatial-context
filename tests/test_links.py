@@ -742,3 +742,23 @@ class SampleHomeWifiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class UnifiDeviceForMacTest(unittest.TestCase):
+    """A MAC that two integrations list maps to the non-UniFi device."""
+
+    def test_prefers_the_device_another_integration_owns(self) -> None:
+        import sys
+
+        m = links_harness.load()
+        mac = "02:00:00:00:00:aa"
+        unifi_dev = SimpleNamespace(id="u1", config_entry_id="unifi-entry", connections={("mac", mac)})
+        esp_dev = SimpleNamespace(id="e1", config_entry_id="esphome-entry", connections={("mac", mac)})
+        registry = SimpleNamespace(devices=[unifi_dev, esp_dev])
+        dr = sys.modules["homeassistant.helpers.device_registry"]
+        with mock.patch.object(dr, "async_get", return_value=registry, create=True), mock.patch.object(
+            dr, "CONNECTION_NETWORK_MAC", "mac", create=True
+        ), mock.patch.object(m.unifi, "all_devices", side_effect=lambda reg: list(reg.devices)):
+            result = m.unifi._device_for_mac(None, {"unifi-entry"})
+        self.assertEqual(result[mac], ("e1", ["u1", "e1"]))

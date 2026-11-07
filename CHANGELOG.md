@@ -4,6 +4,8 @@ Notes for each release are also on the [releases page](https://github.com/Gremin
 
 ## Fork changes
 
+1.0.1-fork.6: use `DeviceEntry.config_entry_id` instead of the deprecated `config_entries` (stops working in HA 2027.10), and point the manifest's documentation and issue tracker at the fork.
+
 1.0.1-fork.5: the UniFi Wi-Fi layer reads clients from the controller's raw data. aiounifi names the AP `access_point_mac`, so `ap_mac` was always empty and no client links were found (upstream `wifi_mesh.py` has the same problem).
 
 This is the `next` branch of a fork (cb2206/ha-spatial-context): upstream `dev` (1.0.1-beta.4) plus these fixes, each also on its own `fix/*` branch to offer upstream.

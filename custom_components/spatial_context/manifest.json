@@ -5,9 +5,9 @@
   "codeowners": ["@Greminn"],
   "config_flow": true,
   "dependencies": ["http", "frontend", "panel_custom", "websocket_api", "image_upload"],
-  "documentation": "https://github.com/Greminn/ha-spatial-context",
+  "documentation": "https://github.com/cb2206/ha-spatial-context",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/Greminn/ha-spatial-context/issues",
+  "issue_tracker": "https://github.com/cb2206/ha-spatial-context/issues",
   "requirements": [],
-  "version": "1.0.1-fork.5"
+  "version": "1.0.1-fork.6"
 }

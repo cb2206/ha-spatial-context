@@ -430,10 +430,12 @@ async def async_build_model(hass: Any) -> SpatialModel:
         meta.setdefault("name", entry.name_by_user or entry.name)
         meta["area_id"] = entry.area_id
         if not meta.get("integration"):
-            config_entry = hass.config_entries.async_get_entry(
-                getattr(entry, "primary_config_entry", None)
-                or next(iter(entry.config_entries), None)
-            ) if entry.config_entries else None
+            config_entry_id = getattr(entry, "config_entry_id", None)
+            config_entry = (
+                hass.config_entries.async_get_entry(config_entry_id)
+                if config_entry_id
+                else None
+            )
             meta["integration"] = config_entry.domain if config_entry else None
 
     model = build_model(

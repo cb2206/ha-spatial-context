@@ -177,7 +177,9 @@ def _device_for_mac(hass: HomeAssistant, unifi_entry_ids: set[str]) -> dict[str,
 
     result: dict[str, tuple[str | None, list[str]]] = {}
     for mac, devices in out.items():
-        native = [d for d in devices if not set(d.config_entries) <= unifi_entry_ids]
+        # A device belongs to one config entry (HA 2026.8+); prefer the one
+        # another integration owns over UniFi's own client device.
+        native = [d for d in devices if getattr(d, "config_entry_id", None) not in unifi_entry_ids]
         preferred = (native or devices)[0]
         result[mac] = (preferred.id, [d.id for d in devices])
     return result
