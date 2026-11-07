@@ -87,6 +87,9 @@ def _empty_floor() -> dict[str, Any]:
         "background_offset_x": 0.0,
         "background_offset_y": 0.0,
         "background_scale": 1.0,
+        # Degrees clockwise the background image is turned about its own
+        # centre — for a scan or PDF that came in sideways or skewed.
+        "background_rotation_deg": 0.0,
         # Which "building" this floor belongs to — null until Align Floors
         # links two floors together (see websocket_api.py's set_building_id
         # and panel.ts's _onAlignApply). Two floors sharing a non-null
@@ -143,14 +146,30 @@ def _empty_property() -> dict[str, Any]:
     }
 
 
+def is_point(value: Any) -> bool:
+    """Whether `value` is an [x, y] pair of finite numbers. Saves are
+    validated (websocket_api.py), but a layout stored before that may hold
+    anything, and one bad point must not break the whole floor."""
+    return (
+        isinstance(value, (list, tuple))
+        and len(value) == 2
+        and all(
+            isinstance(v, (int, float))
+            and not isinstance(v, bool)
+            and math.isfinite(v)
+            for v in value
+        )
+    )
+
+
 def layout_bounds(layout: dict[str, Any]) -> dict[str, float] | None:
     """A floor's traced footprint extent (rooms + walls only, not pins), or
     None when nothing's been traced."""
     points: list[list[float]] = []
     for room in layout.get("rooms", []):
-        points.extend(room.get("points", []))
+        points.extend(p for p in room.get("points") or [] if is_point(p))
     for wall in layout.get("walls", []):
-        points.extend(wall.get("points", []))
+        points.extend(p for p in wall.get("points") or [] if is_point(p))
     if not points:
         return None
     xs = [p[0] for p in points]
@@ -212,11 +231,23 @@ def meters_per_unit(scale: dict | None) -> float | None:
     """Derive metres-per-stored-unit from a floor's two-point calibration segment."""
     if not scale:
         return None
-    (x1, y1), (x2, y2) = scale["points"]
+    points = scale.get("points")
+    meters = scale.get("meters")
+    # A malformed stored scale reads as "not calibrated", not an error.
+    if (
+        not isinstance(points, (list, tuple))
+        or len(points) != 2
+        or not all(map(is_point, points))
+        or not isinstance(meters, (int, float))
+        or not math.isfinite(meters)
+        or meters <= 0
+    ):
+        return None
+    (x1, y1), (x2, y2) = points
     unit_distance = math.hypot(x2 - x1, y2 - y1)
     if unit_distance == 0:
         return None
-    return scale["meters"] / unit_distance
+    return meters / unit_distance
 
 
 def property_meters_per_unit(
@@ -319,14 +350,39 @@ def _empty_settings() -> dict[str, Any]:
         # How many dB worse than the walls predict a Zigbee link may be
         # before the Connectivity Map flags it (#29). 0 turns the check off.
         "weak_link_threshold_db": 25,
+        # Height of one level, metres: a floor at HA `level` n sits at
+        # n x this, for distances between floors (spatial/model.py).
+        "floor_height_m": 3.0,
+        # Offer the spatial tools (spatial_context__summary, ...) to LLM
+        # conversation agents (llm.py). Off by default (#53): the layout says
+        # a lot about a home, so sharing it with an AI is an explicit choice.
+        "llm_tools_enabled": False,
+        # Path-loss exponent of the RF model (spatial/rf.py): 2.0 is free
+        # space, the panel's model; indoor paths are often 2.5-3.5.
+        "rf_path_loss_exponent": 2.0,
+        # Loss through one floor slab, dB, for links between levels (#27
+        # measured 10-17 dB).
+        "rf_slab_loss_db": 13,
     }
+
+
+_SETTINGS_CACHE_KEY = f"{DOMAIN}_settings_cache"
 
 
 async def async_get_settings(hass: HomeAssistant) -> dict[str, Any]:
     """Return the stored app-wide settings, or defaults."""
     async with _lock(hass):
         data = await _async_load_all(hass)
-        return {**_empty_settings(), **(data.get("settings") or {})}
+        settings = {**_empty_settings(), **(data.get("settings") or {})}
+        hass.data[_SETTINGS_CACHE_KEY] = settings
+        return settings
+
+
+def cached_settings(hass: HomeAssistant) -> dict[str, Any]:
+    """The settings as last read or saved, for synchronous callers (the LLM
+    tools platform's `async_get_tools` is a callback and cannot await the
+    store). Defaults until the first read; __init__ reads them at setup."""
+    return hass.data.get(_SETTINGS_CACHE_KEY) or _empty_settings()
 
 
 async def async_save_settings(hass: HomeAssistant, settings: dict[str, Any]) -> None:
@@ -335,6 +391,7 @@ async def async_save_settings(hass: HomeAssistant, settings: dict[str, Any]) -> 
         data = await _async_load_all(hass)
         data["settings"] = settings
         await _store(hass).async_save(data)
+        hass.data[_SETTINGS_CACHE_KEY] = {**_empty_settings(), **settings}
 
 
 async def async_get_floor_layout(hass: HomeAssistant, floor_id: str) -> dict[str, Any]:

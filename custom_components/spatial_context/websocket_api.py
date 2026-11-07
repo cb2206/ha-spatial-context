@@ -8,6 +8,7 @@ whatever the sidebar shows, so each one checks for itself.
 from __future__ import annotations
 
 import logging
+import math
 
 import voluptuous as vol
 
@@ -32,8 +33,22 @@ _LOGGER = logging.getLogger(__name__)
 # Upper bounds on what a save may contain. A real home is nowhere near these;
 # they only stop one oversized message writing an unbounded document.
 _TEXT = vol.All(str, vol.Length(max=256))
-_POINTS = vol.All([[vol.Coerce(float)]], vol.Length(max=10000))
 _MAX_ITEMS = 5000
+
+
+def _finite(value: float) -> float:
+    """Refuse NaN and infinity, which float() accepts from a string ("nan",
+    "inf") and which would break every distance computed from them."""
+    if not math.isfinite(value):
+        raise vol.Invalid("must be a finite number")
+    return value
+
+
+_FLOAT = vol.All(vol.Coerce(float), _finite)
+# A point is exactly [x, y]; anything else breaks the bounds, the scale and
+# the export, which all unpack points as pairs.
+_POINT = vol.All([_FLOAT], vol.Length(min=2, max=2))
+_POINTS = vol.All([_POINT], vol.Length(max=10000))
 
 
 def _items(schema: dict) -> vol.All:
@@ -90,13 +105,11 @@ _ROOM_SCHEMA = {
     # so an existing room with none of these set keeps today's baked-in
     # default look (frontend applies the fallback, not this schema).
     vol.Optional("fill_color"): vol.Any(vol.Match(r"^#[0-9a-fA-F]{6}$"), None),
-    vol.Optional("fill_opacity"): vol.Any(vol.Coerce(float), None),
-    vol.Optional("border_opacity"): vol.Any(vol.Coerce(float), None),
+    vol.Optional("fill_opacity"): vol.Any(_FLOAT, None),
+    vol.Optional("border_opacity"): vol.Any(_FLOAT, None),
     vol.Optional("visible"): bool,
     # Hand-placed name label position (#33); null = automatic.
-    vol.Optional("label_position"): vol.Any(
-        None, vol.All([vol.Coerce(float)], vol.Length(min=2, max=2))
-    ),
+    vol.Optional("label_position"): vol.Any(None, _POINT),
 }
 
 _PIN_SCHEMA = {
@@ -109,14 +122,18 @@ _PIN_SCHEMA = {
     # longer resolves to any device (deleted integration, orphaned
     # registry entry) legitimately has none — never guessed at.
     vol.Optional("device_id"): vol.Any(_TEXT, None),
-    vol.Required("x"): vol.Coerce(float),
-    vol.Required("y"): vol.Coerce(float),
+    vol.Required("x"): _FLOAT,
+    vol.Required("y"): _FLOAT,
     vol.Optional("room_id"): vol.Any(_TEXT, None),
     vol.Optional("icon_override"): vol.Any(_TEXT, None),
     vol.Optional("label_override"): vol.Any(_TEXT, None),
     # Mounting height in metres above floor level — matters for e.g. mmWave
     # presence sensors, where low/high placement changes the detection cone.
-    vol.Optional("height_m"): vol.Any(vol.Coerce(float), None),
+    vol.Optional("height_m"): vol.Any(_FLOAT, None),
+    # Set by bulk "place by area": the pin sits somewhere in the right room,
+    # not where the device really is. Cleared (key dropped) once the user
+    # drags or confirms it. Absent = a deliberately placed pin.
+    vol.Optional("approximate"): bool,
 }
 
 _WALL_SCHEMA = {
@@ -125,7 +142,7 @@ _WALL_SCHEMA = {
     # Optional, not Required — a wall saved before this field existed and
     # never individually re-edited since would round-trip through a save
     # without one, and that must not fail validation.
-    vol.Optional("thickness_cm"): vol.Any(vol.Coerce(float), None),
+    vol.Optional("thickness_cm"): vol.Any(_FLOAT, None),
     vol.Required("points"): _POINTS,
 }
 
@@ -133,15 +150,18 @@ _OPENING_SCHEMA = {
     vol.Required("id"): _TEXT,
     vol.Required("wallId"): _TEXT,
     vol.Required("type"): vol.In(["door", "window"]),
-    vol.Required("x"): vol.Coerce(float),
-    vol.Required("y"): vol.Coerce(float),
-    vol.Required("width"): vol.Coerce(float),
+    vol.Required("x"): _FLOAT,
+    vol.Required("y"): _FLOAT,
+    vol.Required("width"): _FLOAT,
 }
 
 _SCALE_SCHEMA = vol.Any(
     {
-        vol.Required("points"): _POINTS,
-        vol.Required("meters"): vol.Coerce(float),
+        # The two ends of a known distance, and that distance in metres.
+        vol.Required("points"): vol.All([_POINT], vol.Length(min=2, max=2)),
+        vol.Required("meters"): vol.All(
+            _FLOAT, vol.Range(min=0, min_included=False)
+        ),
     },
     None,
 )
@@ -162,10 +182,10 @@ _MAP_BACKGROUND_SCHEMA = vol.Any(
 
 _VIEW_BOX_SCHEMA = vol.Any(
     {
-        vol.Required("x"): vol.Coerce(float),
-        vol.Required("y"): vol.Coerce(float),
-        vol.Required("w"): vol.Coerce(float),
-        vol.Required("h"): vol.Coerce(float),
+        vol.Required("x"): _FLOAT,
+        vol.Required("y"): _FLOAT,
+        vol.Required("w"): _FLOAT,
+        vol.Required("h"): _FLOAT,
     },
     None,
 )
@@ -178,24 +198,24 @@ _PLACEMENT_SCHEMA = {
     vol.Optional("building_id"): vol.Any(_TEXT, None),
     vol.Required("floor_id"): _TEXT,
     vol.Optional("label_override"): vol.Any(_TEXT, None),
-    vol.Required("x"): vol.Coerce(float),
-    vol.Required("y"): vol.Coerce(float),
-    vol.Required("width"): vol.Coerce(float),
-    vol.Required("height"): vol.Coerce(float),
-    vol.Required("rotation_deg"): vol.Coerce(float),
+    vol.Required("x"): _FLOAT,
+    vol.Required("y"): _FLOAT,
+    vol.Required("width"): _FLOAT,
+    vol.Required("height"): _FLOAT,
+    vol.Required("rotation_deg"): _FLOAT,
     # width/height's locked ratio, captured from the building's traced
     # footprint at placement time (see registry_snapshot.py's
     # _content_bounds) — resize preserves this instead of letting the
     # rectangle be freely squashed/stretched away from the real shape.
-    vol.Required("aspect_ratio"): vol.Coerce(float),
+    vol.Required("aspect_ratio"): _FLOAT,
     # The floor-plan box this rectangle maps onto (see storage.py's
     # _empty_property) — null when the building had nothing traced yet.
     vol.Optional("source_bounds"): vol.Any(
         {
-            vol.Required("min_x"): vol.Coerce(float),
-            vol.Required("min_y"): vol.Coerce(float),
-            vol.Required("max_x"): vol.Coerce(float),
-            vol.Required("max_y"): vol.Coerce(float),
+            vol.Required("min_x"): _FLOAT,
+            vol.Required("min_y"): _FLOAT,
+            vol.Required("max_x"): _FLOAT,
+            vol.Required("max_y"): _FLOAT,
         },
         None,
     ),
@@ -208,10 +228,14 @@ _PLACEMENT_SCHEMA = {
         vol.Required("type"): "spatial_context/save_layout",
         vol.Required("floor_id"): _TEXT,
         vol.Required("background_image_id"): vol.Any(_TEXT, None),
-        vol.Required("background_opacity"): vol.Coerce(float),
-        vol.Required("background_offset_x"): vol.Coerce(float),
-        vol.Required("background_offset_y"): vol.Coerce(float),
-        vol.Required("background_scale"): vol.Coerce(float),
+        vol.Required("background_opacity"): _FLOAT,
+        vol.Required("background_offset_x"): _FLOAT,
+        vol.Required("background_offset_y"): _FLOAT,
+        vol.Required("background_scale"): _FLOAT,
+        # Optional: a panel older than this field doesn't send it.
+        vol.Optional("background_rotation_deg", default=0.0): vol.All(
+            _FLOAT, vol.Range(min=-360, max=360)
+        ),
         vol.Required("building_id"): vol.Any(_TEXT, None),
         vol.Required("view_box"): _VIEW_BOX_SCHEMA,
         vol.Required("rooms"): _items(_ROOM_SCHEMA),
@@ -235,6 +259,7 @@ async def ws_save_layout(
         "background_offset_x": msg["background_offset_x"],
         "background_offset_y": msg["background_offset_y"],
         "background_scale": msg["background_scale"],
+        "background_rotation_deg": msg["background_rotation_deg"],
         "building_id": msg["building_id"],
         "view_box": msg["view_box"],
         "rooms": msg["rooms"],
@@ -290,10 +315,10 @@ async def ws_get_property_layout(
     {
         vol.Required("type"): "spatial_context/save_property_layout",
         vol.Required("background_image_id"): vol.Any(_TEXT, None),
-        vol.Required("background_opacity"): vol.Coerce(float),
-        vol.Required("background_offset_x"): vol.Coerce(float),
-        vol.Required("background_offset_y"): vol.Coerce(float),
-        vol.Required("background_scale"): vol.Coerce(float),
+        vol.Required("background_opacity"): _FLOAT,
+        vol.Required("background_offset_x"): _FLOAT,
+        vol.Required("background_offset_y"): _FLOAT,
+        vol.Required("background_scale"): _FLOAT,
         vol.Required("view_box"): _VIEW_BOX_SCHEMA,
         vol.Required("placements"): _items(_PLACEMENT_SCHEMA),
         # Outdoor device pins — Optional so an older panel bundle's save
@@ -359,10 +384,25 @@ _SETTINGS_SCHEMA = {
     ),
     vol.Optional("auto_save", default=True): bool,
     vol.Optional("debug_logging", default=False): bool,
-    vol.Optional("hidden_device_ids", default=list): [str],
+    vol.Optional("hidden_device_ids", default=list): vol.All(
+        [_TEXT], vol.Length(max=_MAX_ITEMS)
+    ),
     vol.Optional("open_view", default="saved"): vol.In(["saved", "fit"]),
     vol.Optional("weak_link_threshold_db", default=25): vol.All(
         vol.Coerce(int), vol.Range(min=0, max=60)
+    ),
+    # No default: the panel does not know these yet (service/WS-only for
+    # now), so a save that leaves one out keeps the stored value instead of
+    # resetting it (see ws_save_settings).
+    vol.Optional("floor_height_m"): vol.All(
+        vol.Coerce(float), vol.Range(min=1.5, max=10)
+    ),
+    vol.Optional("llm_tools_enabled"): bool,
+    vol.Optional("rf_path_loss_exponent"): vol.All(
+        vol.Coerce(float), vol.Range(min=1.6, max=4.0)
+    ),
+    vol.Optional("rf_slab_loss_db"): vol.All(
+        vol.Coerce(float), vol.Range(min=0, max=40)
     ),
 }
 
@@ -394,11 +434,18 @@ async def ws_save_settings(
     connection: websocket_api.ActiveConnection,
     msg: dict,
 ) -> None:
-    """Replace-save app-wide settings."""
+    """Save app-wide settings over the stored ones."""
     # Every schema key (a vol.Required/Optional marker; `.schema` is its
-    # name) — Optional ones are always present, filled from their default.
+    # name) that the message carries — Optional ones with a default are
+    # always present. A key the sender does not know (one without a
+    # default) keeps its stored value, so an older panel cannot reset it.
+    stored = await async_get_settings(hass)
     await async_save_settings(
-        hass, {key.schema: msg[key.schema] for key in _SETTINGS_SCHEMA}
+        hass,
+        {
+            **stored,
+            **{key.schema: msg[key.schema] for key in _SETTINGS_SCHEMA if key.schema in msg},
+        },
     )
     connection.send_result(msg["id"], {"success": True})
 
@@ -520,6 +567,53 @@ async def ws_get_wifi_mesh(
 
 @websocket_api.require_admin
 @websocket_api.websocket_command(
+    {
+        vol.Required("type"): "spatial_context/get_links",
+        vol.Optional("layer"): vol.In(("zigbee", "thread", "wifi", "bluetooth")),
+        vol.Optional("network"): _TEXT,
+        vol.Optional("refresh", default=False): bool,
+    }
+)
+@websocket_api.async_response
+async def ws_get_links(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict,
+) -> None:
+    """The stored radio-link snapshots (see links/store.py).
+
+    Serves the last stored topology by default, which costs nothing.
+    `refresh` re-reads the integrations for the asked layer (or all) first;
+    that is still cheap except for a Zigbee2MQTT house with no cached map,
+    where it waits for one network-map scan.
+    """
+    # Imported here, like zha_mesh in zigbee_mesh.py, so the link providers
+    # load only when links are actually asked for.
+    from .links import store as link_store
+    from .links.common import compact_snapshot_dict
+
+    layer = msg.get("layer")
+    try:
+        if msg["refresh"]:
+            await link_store.async_refresh(hass, [layer] if layer else None)
+        snapshots = await link_store.async_get_snapshots(hass, layer, msg.get("network"))
+    except Exception as err:  # noqa: BLE001 - surface any failure to the frontend, not an unhandled rejection
+        connection.send_error(
+            msg["id"], "get_links_failed", _client_error(err, "Radio link lookup")
+        )
+        return
+    store = link_store.async_get_store(hass)
+    connection.send_result(
+        msg["id"],
+        {
+            "last_refresh": store.last_refresh if store else None,
+            "snapshots": [compact_snapshot_dict(s) for s in snapshots],
+        },
+    )
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
     {vol.Required("type"): "spatial_context/get_bluetooth_devices"}
 )
 @callback
@@ -597,6 +691,7 @@ def async_register_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_zigbee_mesh)
     websocket_api.async_register_command(hass, ws_get_wifi_mesh)
     websocket_api.async_register_command(hass, ws_get_bluetooth_devices)
+    websocket_api.async_register_command(hass, ws_get_links)
     websocket_api.async_register_command(hass, ws_version)
     websocket_api.async_register_command(hass, ws_debug_log)
     websocket_api.async_register_command(hass, ws_debug_report)

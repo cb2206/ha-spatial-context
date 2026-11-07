@@ -1,6 +1,6 @@
 {
   "name": "spatial-context-panel",
-  "version": "1.0.1-beta.4",
+  "version": "1.0.1-fork.4",
   "description": "Sidebar panel frontend for the Spatial Context Home Assistant integration",
   "author": "Greminn",
   "license": "MIT",
@@ -29,6 +29,7 @@
     "@versatiles/style": "^6.2.0",
     "lit": "^3.3.3",
     "maplibre-gl": "^6.12.0",
+    "pdfjs-dist": "6.4.299",
     "polylabel": "^2.1.0"
   },
   "devDependencies": {

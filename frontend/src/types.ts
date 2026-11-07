@@ -43,6 +43,10 @@ export interface Pin {
   /** Mounting height in metres above floor level, e.g. for judging a
    * mmWave sensor's detection cone. Null when not specified. */
   height_m: number | null;
+  /** Bulk-placed by area (see bulk-place.ts): in the right room, not yet
+   * at the device's real spot. Dragging or confirming the pin drops the
+   * key; absent = placed deliberately. */
+  approximate?: boolean;
 }
 
 export interface Wall {
@@ -155,6 +159,10 @@ export interface FloorLayout {
   background_offset_x: number;
   background_offset_y: number;
   background_scale: number;
+  /** Degrees clockwise the background image is turned about its own
+   * centre (a scan or PDF that came in sideways). Absent until the backend
+   * reports it, so an older backend's strict schema never sees it. */
+  background_rotation_deg?: number;
   /** Which "building" this floor belongs to — null until Align Floors
    * links it to another floor. Two floors sharing a non-null building_id
    * share one coordinate system (e.g. Top Floor + Bottom Floor of the
@@ -321,6 +329,7 @@ export interface ExportSnapshot {
         x_m: number | null;
         y_m: number | null;
         height_m: number | null;
+        approximate?: boolean;
       }[];
     }[];
     walls: {

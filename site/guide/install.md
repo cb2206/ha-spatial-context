@@ -8,7 +8,7 @@ Spatial Context installs as a custom integration, from HACS or by copying one fo
 
 Requirements:
 
-- Home Assistant 2024.10 or newer.
+- Home Assistant 2026.9 or newer.
 - Floors defined under **Settings → Areas → Floors**.
 - An administrator account. The panel and its commands are for administrators only, and other users do not see Spatial Context in the sidebar.
 

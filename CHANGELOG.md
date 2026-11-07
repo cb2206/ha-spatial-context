@@ -2,6 +2,35 @@
 
 Notes for each release are also on the [releases page](https://github.com/Greminn/ha-spatial-context/releases). This file starts at 1.0.0 and summarises the beta releases before it.
 
+## Fork changes
+
+This is the `next` branch of a fork (cb2206/ha-spatial-context): upstream `dev` (1.0.1-beta.4) plus these fixes, each also on its own `fix/*` branch to offer upstream.
+
+- Wi-Fi: a UniFi client's signal fills in the missing dBm on links from enabled trackers (`fix/wifi-unifi-rssi`).
+- `get_map`: devices whose room was deleted are exported under Unassigned instead of being dropped (`fix/export-orphan-room-devices`).
+- `get_map` and `refresh_zigbee_mesh` are admin-only for user calls; automations and scripts still work (`fix/admin-only-services`).
+- Saves refuse malformed points, a bad scale, NaN and infinity, and an oversized hidden device list; malformed stored data is skipped instead of breaking a floor (`fix/layout-validation`).
+- ZHA: a PreviousChild neighbour is no longer drawn as a live link; the refresh action's description no longer says Zigbee2MQTT only (`fix/zha-stale-relationships`).
+- The panel follows Home Assistant's language (German now shows), and the last hard-coded English strings are translated (`fix/i18n-set-language`).
+- Minimum Home Assistant version raised to 2026.9, the first release the device registry code works on (`fix/min-ha-version`).
+
+Phase 2 (1.0.1-fork.2), new features on `feat/*` branches:
+
+- Link store: ZHA neighbour and route tables, Zigbee2MQTT's cached map, Matter/Thread neighbour and route tables (one snapshot per Thread network) and UniFi Wi-Fi associations are read into a persisted store. It refreshes two minutes after start and then every 30 minutes, and never scans. Also available on demand through the new `spatial_context.refresh_links` action and the `spatial_context/get_links` WebSocket command (`feat/link-store`).
+- Spatial engine (`spatial/`): metric positions and heights, server-side room from the pin, room adjacency, walls and floor slabs between two devices, an RF path-loss model, and findings (weak links, unplaced infrastructure, isolated routers, far parents, area mismatches, uncalibrated levels). It reads the link store (`feat/spatial-ai`).
+- LLM tools (`spatial_context__summary`, `device_context`, `path`, `weak_links`, `room`), each with a bounded token budget. Off by default: they are offered only on the "Home Assistant" LLM API once `llm_tools_enabled` is on (`feat/spatial-ai`).
+- `get_map` gains optional `floor`, `room`, `compact` and `include_links` fields. With no fields its output is unchanged (`feat/spatial-ai`).
+- New actions `spatial_context.query` (the LLM tools' answers, for ha-mcp, scripts and REST) and `spatial_context.update_settings` (floor height, RF exponent, slab loss, weak-link threshold, LLM tools on/off). Saving settings keeps any setting the sender does not know about (`feat/spatial-ai`).
+- Every action is registered through Home Assistant's `async_register_admin_service`, so user calls need an admin and automations still work.
+
+Phase 3 (1.0.1-fork.3), setup automation (`feat/setup-automation`):
+
+- Bulk place: put every unplaced device on a floor (or one area's devices) into the room linked to its HA area, spread out from the room's pole of inaccessibility. Such pins are marked approximate (see-through, dashed rim, an "N approximate" chip and filter) until dragged or confirmed with "Confirm position". A "Keep placing" toggle arms the next unplaced device after each placement.
+- Create placeholder rooms for a floor's HA areas that have no room yet (squares sized by device count, linked to the area, laid out over the plan).
+- Generate walls from room outlines: shared edges become one interior wall (rooms within 35 cm count as sharing it), outside edges become exterior walls; running it again adds nothing.
+- PDF (page 1, pdf.js loaded only on first use) and SVG backgrounds, a background from a camera entity's current image (e.g. a vacuum map), and background rotation with 90° turns and a straighten slider.
+- Pins gain an optional `approximate` flag and floors a `background_rotation_deg` (finite, −360..360, default 0). `get_map` adds `"approximate": true` only for such pins, so other output is unchanged. The LLM tools and `spatial_context.query` report `position_confidence` ("approximate"/"confirmed") per placed device, and the summary counts approximate positions. Restart HA after installing: an older backend rejects saves that carry the new fields.
+
 ## Unreleased
 
 ### Added

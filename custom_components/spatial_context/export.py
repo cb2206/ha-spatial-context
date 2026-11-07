@@ -13,6 +13,7 @@ from .storage import (
     async_get_all_layouts,
     async_get_floor_layout,
     async_get_property_layout,
+    is_point,
     live_layouts,
     live_placements,
     meters_per_unit,
@@ -85,6 +86,12 @@ def _wall_attenuation_db(wall: dict) -> float:
     return material["attenuation_db_per_cm"] * _wall_thickness_cm(wall)
 
 
+def _wall_points(wall: dict) -> list:
+    """A wall's stored points, skipping any malformed one (a layout saved
+    before saves were validated) rather than failing the whole export."""
+    return [p for p in wall.get("points") or [] if is_point(p)]
+
+
 async def async_get_map_data(hass: HomeAssistant) -> dict[str, Any]:
     """Denormalized export: floors -> rooms -> devices, plus outdoor
     devices placed on the Property tab.
@@ -115,7 +122,10 @@ async def async_get_map_data(hass: HomeAssistant) -> dict[str, Any]:
 
         for pin in layout.get("pins", []):
             device = _export_device(pin, placeable_entities, floor_mpu)
-            room_devices.setdefault(pin.get("room_id"), []).append(device)
+            # A room_id whose room has since been deleted counts as no room,
+            # so the device still shows up (under "Unassigned").
+            room_id = pin.get("room_id")
+            room_devices[room_id if room_id in rooms_by_id else None].append(device)
 
         exported_rooms = [
             {
@@ -155,9 +165,9 @@ async def async_get_map_data(hass: HomeAssistant) -> dict[str, Any]:
                 )["label"],
                 "thickness_cm": _wall_thickness_cm(wall),
                 "attenuation_db": _wall_attenuation_db(wall),
-                "points": wall["points"],
+                "points": _wall_points(wall),
                 "points_m": (
-                    [[px * floor_mpu, py * floor_mpu] for px, py in wall["points"]]
+                    [[px * floor_mpu, py * floor_mpu] for px, py in _wall_points(wall)]
                     if floor_mpu
                     else None
                 ),
@@ -227,4 +237,9 @@ def _export_device(
         "x_m": pin["x"] * meters_per_unit if meters_per_unit else None,
         "y_m": pin["y"] * meters_per_unit if meters_per_unit else None,
         "height_m": pin.get("height_m"),
+        # Bulk-placed somewhere in its room and not confirmed yet: the room
+        # is right, the exact point is not. Only present when true, so a
+        # layout without bulk-placed pins exports exactly as before (and
+        # ~300 devices don't each carry "approximate": false).
+        **({"approximate": True} if pin.get("approximate") else {}),
     }

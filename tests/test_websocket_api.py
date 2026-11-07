@@ -136,6 +136,26 @@ class SaveLimitsTest(unittest.TestCase):
         wall = {"id": "w1", "material": "glass", "points": [[0, 0], [5, 0]]}
         self._validate(self._layout(rooms=[room], pins=[pin], walls=[wall]))
 
+    def test_an_approximate_pin_is_accepted_and_kept(self) -> None:
+        pin = {"id": "p1", "device_id": "abc", "x": 1, "y": 2, "approximate": True}
+        result = self.api.ws_save_layout.schema(self._layout(pins=[pin]))
+        self.assertIs(result["pins"][0]["approximate"], True)
+
+    def test_approximate_must_be_a_boolean(self) -> None:
+        pin = {"id": "p1", "device_id": "abc", "x": 1, "y": 2, "approximate": "yes"}
+        with self.assertRaises(vol.Invalid):
+            self._validate(self._layout(pins=[pin]))
+
+    def test_background_rotation_defaults_to_upright(self) -> None:
+        result = self.api.ws_save_layout.schema(self._layout())
+        self.assertEqual(result["background_rotation_deg"], 0.0)
+        result = self.api.ws_save_layout.schema(self._layout(background_rotation_deg=90))
+        self.assertEqual(result["background_rotation_deg"], 90.0)
+
+    def test_an_absurd_background_rotation_is_refused(self) -> None:
+        with self.assertRaises(vol.Invalid):
+            self._validate(self._layout(background_rotation_deg=720))
+
     def test_too_many_rooms_are_refused(self) -> None:
         room = {"id": "r", "name": "x", "points": []}
         with self.assertRaises(vol.Invalid):
@@ -154,6 +174,54 @@ class SaveLimitsTest(unittest.TestCase):
     def test_a_very_long_floor_id_is_refused(self) -> None:
         with self.assertRaises(vol.Invalid):
             self._validate(self._layout(floor_id="f" * 257))
+
+    def test_a_point_must_be_exactly_two_numbers(self) -> None:
+        for points in ([[0]], [[0, 0, 0]], [[0, "x"]]):
+            room = {"id": "r", "name": "x", "points": points}
+            with self.assertRaises(vol.Invalid, msg=points):
+                self._validate(self._layout(rooms=[room]))
+
+    def test_nan_and_infinity_are_refused(self) -> None:
+        pin = {"id": "p1", "device_id": "abc", "x": 1, "y": 2}
+        for bad in ("nan", "inf", "-inf", float("nan"), float("inf")):
+            with self.assertRaises(vol.Invalid, msg=bad):
+                self._validate(self._layout(pins=[dict(pin, x=bad)]))
+            wall = {"id": "w1", "material": "glass", "points": [[0, 0], [bad, 0]]}
+            with self.assertRaises(vol.Invalid, msg=bad):
+                self._validate(self._layout(walls=[wall]))
+            with self.assertRaises(vol.Invalid, msg=bad):
+                self._validate(self._layout(background_scale=bad))
+            # Rotation goes through the shared finite _FLOAT as well.
+            with self.assertRaises(vol.Invalid, msg=bad):
+                self._validate(self._layout(background_rotation_deg=bad))
+            with self.assertRaises(vol.Invalid, msg=bad):
+                self._validate(self._layout(pins=[dict(pin, height_m=bad)]))
+
+    def test_the_scale_is_two_points_and_a_positive_distance(self) -> None:
+        good = {"points": [[0, 0], [100, 0]], "meters": 2}
+        self._validate(self._layout(scale=good))
+        for bad in (
+            dict(good, points=[[0, 0]]),
+            dict(good, points=[[0, 0], [1, 1], [2, 2]]),
+            dict(good, meters=0),
+            dict(good, meters=-1),
+            dict(good, meters="nan"),
+            dict(good, meters="inf"),
+        ):
+            with self.assertRaises(vol.Invalid, msg=bad):
+                self._validate(self._layout(scale=bad))
+
+    def test_hidden_devices_are_limited(self) -> None:
+        settings = {
+            "type": "spatial_context/save_settings",
+            "unit_system": "metric",
+            "zigbee_timeout_seconds": 180,
+        }
+        self.api.ws_save_settings.schema(dict(settings, hidden_device_ids=["a"] * 10))
+        with self.assertRaises(vol.Invalid):
+            self.api.ws_save_settings.schema(
+                dict(settings, hidden_device_ids=["a"] * (self.api._MAX_ITEMS + 1))
+            )
 
     def test_property_placements_are_limited_too(self) -> None:
         message = {

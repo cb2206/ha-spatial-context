@@ -105,6 +105,9 @@ def _load_export(layout: dict | None = None) -> types.ModuleType:
     storage.live_layouts = lambda layouts, ids: layouts  # type: ignore[attr-defined]
     storage.live_placements = lambda floors, placements: placements  # type: ignore[attr-defined]
     storage.meters_per_unit = meters_per_unit  # type: ignore[attr-defined]
+    storage.is_point = lambda p: (  # type: ignore[attr-defined]
+        isinstance(p, list) and len(p) == 2 and all(map(math.isfinite, p))
+    )
     storage.property_meters_per_unit = lambda floors, placements: None  # type: ignore[attr-defined]
     sys.modules["sc_test.storage"] = storage
 
@@ -137,6 +140,17 @@ class ExportTest(unittest.TestCase):
 
         self.assertEqual(data["outdoor_devices"], [])
 
+    def test_pins_say_whether_their_position_is_approximate(self) -> None:
+        export = _load_export()
+        data = asyncio.run(export.async_get_map_data(object()))
+        # Absent unless true, so exports without bulk-placed pins are unchanged.
+        self.assertNotIn("approximate", data["floors"][0]["rooms"][0]["devices"][0])
+
+        pins = [dict(LAYOUT["pins"][0], approximate=True)]
+        export = _load_export(dict(LAYOUT, pins=pins))
+        data = asyncio.run(export.async_get_map_data(object()))
+        self.assertIs(data["floors"][0]["rooms"][0]["devices"][0]["approximate"], True)
+
     def test_uncalibrated_floor_has_no_real_units(self) -> None:
         export = _load_export(dict(LAYOUT, scale=None))
         data = asyncio.run(export.async_get_map_data(object()))
@@ -150,6 +164,28 @@ class ExportTest(unittest.TestCase):
         export = _load_export(dict(LAYOUT, rooms=rooms))
         data = asyncio.run(export.async_get_map_data(object()))
         self.assertEqual(data["floors"][0]["rooms"][0]["name"], "Lounge")
+
+    def test_a_device_in_a_deleted_room_is_exported_as_unassigned(self) -> None:
+        pins = [
+            {"device_id": "d1", "x": 100, "y": 50, "room_id": "r1"},
+            {"device_id": "d2", "x": 10, "y": 5, "room_id": "gone"},
+        ]
+        export = _load_export(dict(LAYOUT, pins=pins))
+        data = asyncio.run(export.async_get_map_data(object()))
+        rooms = data["floors"][0]["rooms"]
+        self.assertEqual([room["id"] for room in rooms], ["r1", None])
+        self.assertEqual(rooms[1]["name"], "Unassigned")
+        self.assertEqual([d["device_id"] for d in rooms[1]["devices"]], ["d2"])
+
+    def test_a_malformed_stored_wall_point_is_skipped(self) -> None:
+        walls = [
+            {"id": "w1", "material": "glass", "points": [[0, 0], [1, 2, 3], [100, 0]]}
+        ]
+        export = _load_export(dict(LAYOUT, walls=walls))
+        data = asyncio.run(export.async_get_map_data(object()))
+        wall = data["floors"][0]["walls"][0]
+        self.assertEqual(wall["points"], [[0, 0], [100, 0]])
+        self.assertEqual(len(wall["points_m"]), 2)
 
 
 if __name__ == "__main__":
