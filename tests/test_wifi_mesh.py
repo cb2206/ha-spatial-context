@@ -48,6 +48,7 @@ def _load(devices: list, entities: list) -> types.ModuleType:
         entity_registry=entity_registry,
     )
     stubs.new_package("sc_wifi_test")
+    stubs.load("sc_wifi_test", "unifi_client")
     return stubs.load("sc_wifi_test", "wifi_mesh")
 
 
@@ -135,3 +136,31 @@ class UnifiSignalTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AiounifiClientShapeTest(unittest.TestCase):
+    """Real aiounifi clients name the AP `access_point_mac` and keep the
+    controller's keys (`ap_mac`, `signal`) only in `raw`."""
+
+    def setUp(self) -> None:
+        devices = [_device("client", CLIENT_MAC), _device("ap", AP_MAC)]
+        self.wifi_mesh = _load(devices, [])
+
+    def test_a_client_with_only_raw_controller_keys_gets_its_link(self) -> None:
+        client = types.SimpleNamespace(
+            mac=CLIENT_MAC,
+            access_point_mac=AP_MAC,
+            raw={"mac": CLIENT_MAC, "ap_mac": AP_MAC, "is_wired": False, "signal": -64},
+        )
+        links = self.wifi_mesh.async_get_wifi_mesh(_Hass({}, [client]))["links"]
+        self.assertEqual(
+            links,
+            [{"source_device_id": "client", "target_device_id": "ap", "rssi_dbm": -64}],
+        )
+
+    def test_a_wired_client_in_raw_is_skipped(self) -> None:
+        client = types.SimpleNamespace(
+            raw={"mac": CLIENT_MAC, "ap_mac": AP_MAC, "is_wired": True, "signal": -64}
+        )
+        links = self.wifi_mesh.async_get_wifi_mesh(_Hass({}, [client]))["links"]
+        self.assertEqual(links, [])

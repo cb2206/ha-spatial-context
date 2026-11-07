@@ -17,6 +17,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from .unifi_client import unifi_client_value
 
 
 def _build_mac_to_device_ids(device_registry: dr.DeviceRegistry) -> dict[str, list[str]]:
@@ -157,6 +158,7 @@ def async_get_wifi_mesh(hass: HomeAssistant) -> dict[str, Any]:
     return {"links": links}
 
 
+
 def _unifi_client_links(
     hass: HomeAssistant,
     mac_to_device_ids: dict[str, list[str]],
@@ -193,15 +195,15 @@ def _unifi_client_links(
         except Exception:  # noqa: BLE001 - internals may change shape; never break the Wi-Fi layer
             continue
         for client in client_list:
-            if getattr(client, "is_wired", False):
+            if unifi_client_value(client, "is_wired"):
                 continue
-            client_mac = getattr(client, "mac", None)
-            ap_mac = getattr(client, "ap_mac", None)
+            client_mac = unifi_client_value(client, "mac")
+            ap_mac = unifi_client_value(client, "ap_mac", "access_point_mac", "ap_mac")
             if not client_mac or not ap_mac:
                 continue
             # UniFi's `signal` is dBm (negative); its `rssi` is a positive
             # margin over noise, so only `signal` maps onto our dBm scale.
-            signal = getattr(client, "signal", None)
+            signal = unifi_client_value(client, "signal")
             rssi_dbm = signal if isinstance(signal, (int, float)) and signal < 0 else None
             for client_device_id in mac_to_device_ids.get(dr.format_mac(client_mac), []):
                 for ap_device_id in mac_to_device_ids.get(dr.format_mac(ap_mac), []):

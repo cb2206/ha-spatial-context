@@ -25,6 +25,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from .common import NodeIndex, all_devices, utc_now_iso
+from ..unifi_client import unifi_client_value
 from .model import Link, LinkMetrics, LinkNode, LinkSnapshot
 
 if TYPE_CHECKING:
@@ -204,17 +205,18 @@ def _controller_data(hass: HomeAssistant) -> tuple[list[dict], list[dict], set[s
                 continue
             for item in items:
                 if handler_name == "clients":
+                    value = unifi_client_value
                     sink.append(
                         {
-                            "mac": getattr(item, "mac", None),
-                            "ap_mac": getattr(item, "ap_mac", None),
-                            "signal": getattr(item, "signal", None),
-                            "rssi": getattr(item, "rssi", None),
-                            "is_wired": getattr(item, "is_wired", False),
-                            "name": getattr(item, "name", None) or getattr(item, "hostname", None),
-                            "essid": getattr(item, "essid", None),
-                            "radio": getattr(item, "radio", None),
-                            "channel": getattr(item, "channel", None),
+                            "mac": value(item, "mac"),
+                            "ap_mac": value(item, "ap_mac", "access_point_mac", "ap_mac"),
+                            "signal": value(item, "signal"),
+                            "rssi": value(item, "rssi"),
+                            "is_wired": bool(value(item, "is_wired")),
+                            "name": value(item, "name") or value(item, "hostname"),
+                            "essid": value(item, "essid"),
+                            "radio": value(item, "radio"),
+                            "channel": value(item, "channel"),
                         }
                     )
                 elif getattr(item, "type", None) == "uap":
