@@ -1,12 +1,41 @@
-"""Services for Spatial Context."""
+"""Services for Spatial Context.
+
+Both services are admin-only, like the WebSocket API: the map holds the
+whole floor plan and every placed device, and a mesh refresh makes the
+Zigbee network re-scan itself. A call with no user (an automation or
+script) is allowed, the same rule as Home Assistant's own admin services.
+"""
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.exceptions import Unauthorized, UnknownUser
 
 from .const import DOMAIN
 from .export import async_get_map_data
 from .zigbee_mesh import async_get_network_map
+
+
+def _admin_only(
+    hass: HomeAssistant, handler: Callable[[ServiceCall], Awaitable[Any]]
+) -> Callable[[ServiceCall], Awaitable[Any]]:
+    """The check `homeassistant.helpers.service.async_register_admin_service`
+    makes, done here because that helper only takes `supports_response`
+    from Home Assistant 2025.6, newer than this integration's minimum."""
+
+    async def check_admin(call: ServiceCall) -> Any:
+        if call.context.user_id:
+            user = await hass.auth.async_get_user(call.context.user_id)
+            if user is None:
+                raise UnknownUser(context=call.context)
+            if not user.is_admin:
+                raise Unauthorized(context=call.context)
+        return await handler(call)
+
+    return check_admin
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
@@ -19,7 +48,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN,
         "get_map",
-        get_map_service,
+        _admin_only(hass, get_map_service),
         supports_response=SupportsResponse.ONLY,
     )
 
@@ -33,5 +62,5 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN,
         "refresh_zigbee_mesh",
-        refresh_zigbee_mesh_service,
+        _admin_only(hass, refresh_zigbee_mesh_service),
     )

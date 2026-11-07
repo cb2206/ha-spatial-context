@@ -11,6 +11,8 @@ Spatial Context registers two actions for use in automations and scripts.
 | `spatial_context.get_map` | Returns the whole layout as the action's response. See [The Map Data](/ai/map-data). |
 | `spatial_context.refresh_zigbee_mesh` | Runs a fresh Zigbee scan and caches the result, so the Zigbee layer opens with current data. |
 
+Automations and scripts can always run them. Called directly by a user (from Developer Tools, or through the API with a user's token), they need an administrator account, the same as the panel.
+
 ## Read the Map
 
 ```yaml
