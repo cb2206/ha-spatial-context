@@ -123,6 +123,35 @@ class ZhaMeshTest(unittest.TestCase):
         ):
             self.assertEqual(zha_mesh.coordinator_device_ids(None), set())
 
+    def test_a_previous_child_is_not_a_live_link(self) -> None:
+        zigbee_mesh, zha_mesh = _setup()
+        infos = [
+            _info(
+                "r",
+                "Router",
+                [
+                    _nb("gone", "120", "PreviousChild"),
+                    _nb("s", "100", "Sibling"),
+                    _nb("n", "80", "NoneOfTheAbove"),
+                ],
+            ),
+            _info("gone", "EndDevice", []),
+            _info("s", "Router", []),
+            _info("n", "Router", []),
+        ]
+        with mock.patch.object(zha_mesh, "_device_infos", return_value=infos):
+            mesh = asyncio.run(
+                zha_mesh.async_fetch_zha_mesh(
+                    None, False, 30, zigbee_mesh._merge_links
+                )
+            )
+        pairs = {
+            frozenset((link["source_ieee"], link["target_ieee"]))
+            for link in mesh["links"]
+        }
+        self.assertEqual(pairs, {frozenset(("r", "s")), frozenset(("r", "n"))})
+        self.assertTrue(all(not link["parent_child"] for link in mesh["links"]))
+
     def test_unparseable_lqi_is_not_counted_as_zero(self) -> None:
         zigbee_mesh, zha_mesh = _setup()
         infos = [

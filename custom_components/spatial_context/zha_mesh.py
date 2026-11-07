@@ -27,8 +27,13 @@ from homeassistant.core import HomeAssistant
 _LOGGER = logging.getLogger(__name__)
 
 # zigpy's neighbor relationship names -> Z2M's numeric codes, which
-# `_merge_links` reads (0 = parent, 1 = child, 2 = sibling).
+# `_merge_links` reads (0 = parent, 1 = child, 2 = sibling). Sibling and
+# NoneOfTheAbove are still neighbors the reporter hears, so they count as
+# siblings.
 _RELATIONSHIP = {"Parent": 0, "Child": 1}
+# A former child that has since left (rejoined elsewhere, or gone): kept in
+# the table for a while, but not a live link, so it is not drawn.
+_STALE_RELATIONSHIPS = {"PreviousChild"}
 
 
 def _gateway_proxy(hass: HomeAssistant) -> Any:
@@ -88,6 +93,8 @@ async def async_fetch_zha_mesh(
     for info in infos:
         reporter = str(info["ieee"])
         for neighbor in info.get("neighbors") or []:
+            if neighbor.get("relationship") in _STALE_RELATIONSHIPS:
+                continue
             try:
                 lqi = int(neighbor["lqi"])
             except (KeyError, TypeError, ValueError):
