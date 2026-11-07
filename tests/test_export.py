@@ -105,6 +105,9 @@ def _load_export(layout: dict | None = None) -> types.ModuleType:
     storage.live_layouts = lambda layouts, ids: layouts  # type: ignore[attr-defined]
     storage.live_placements = lambda floors, placements: placements  # type: ignore[attr-defined]
     storage.meters_per_unit = meters_per_unit  # type: ignore[attr-defined]
+    storage.is_point = lambda p: (  # type: ignore[attr-defined]
+        isinstance(p, list) and len(p) == 2 and all(map(math.isfinite, p))
+    )
     storage.property_meters_per_unit = lambda floors, placements: None  # type: ignore[attr-defined]
     sys.modules["sc_test.storage"] = storage
 
@@ -150,6 +153,16 @@ class ExportTest(unittest.TestCase):
         export = _load_export(dict(LAYOUT, rooms=rooms))
         data = asyncio.run(export.async_get_map_data(object()))
         self.assertEqual(data["floors"][0]["rooms"][0]["name"], "Lounge")
+
+    def test_a_malformed_stored_wall_point_is_skipped(self) -> None:
+        walls = [
+            {"id": "w1", "material": "glass", "points": [[0, 0], [1, 2, 3], [100, 0]]}
+        ]
+        export = _load_export(dict(LAYOUT, walls=walls))
+        data = asyncio.run(export.async_get_map_data(object()))
+        wall = data["floors"][0]["walls"][0]
+        self.assertEqual(wall["points"], [[0, 0], [100, 0]])
+        self.assertEqual(len(wall["points_m"]), 2)
 
 
 if __name__ == "__main__":
