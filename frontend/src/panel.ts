@@ -122,6 +122,7 @@ import { metersPerUnit, panMap, rotateMapTo, zoomMap } from "./map/map-camera";
 import "./views/settings-page";
 import type { PropertyBuilding } from "./views/property-overlay";
 import { panelStyles } from "./panel-styles";
+import { panelBundleUrls, reloadFresh } from "./reload-fresh";
 import {
   APPEARANCES,
   APPEARANCE_ICONS,
@@ -3858,6 +3859,15 @@ export class SpatialContextPanel extends LitElement {
                             : localize("panel.versionReload")
                         }</span
                       >
+                      ${
+                        this._versionNotice === "reload"
+                          ? html`<button
+                              @click=${() => void reloadFresh(panelBundleUrls(document))}
+                            >
+                              ${localize("panel.reload")}
+                            </button>`
+                          : nothing
+                      }
                       <button @click=${() => (this._versionNotice = null)}>
                         ${localize("panel.dismiss")}
                       </button>
