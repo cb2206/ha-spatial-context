@@ -56,6 +56,7 @@ import { formatLarge, largeUnitLabel } from "../units";
 import { localize } from "../i18n";
 import { sharedStyles } from "../styles";
 import { floorplanCanvasStyles } from "./floorplan-canvas-styles";
+import { planSheetStyle, type PlanSheet } from "../appearance";
 
 /** Fixed logical coordinate space width every floor's rooms/pins are stored in,
  * independent of the uploaded background image's actual pixel resolution. */
@@ -144,6 +145,8 @@ export class FloorplanCanvas extends LitElement {
 
   /** HA is in a dark theme: draw the canvas, plan image and walls for it. */
   @property({ type: Boolean, reflect: true }) dark = false;
+  /** What sits behind the background image (see appearance.ts). */
+  @property() planSheet: PlanSheet = "auto";
   @property({ attribute: false }) rooms: Room[] = [];
   @property({ attribute: false }) pins: Pin[] = [];
   @property({ attribute: false }) walls: Wall[] = [];
@@ -2364,6 +2367,13 @@ export class FloorplanCanvas extends LitElement {
    * namespaced correctly). This replicates the SVG viewBox's own
    * coordinate mapping with a manual CSS transform instead.
    */
+  /** The sheet is the image element's own background, so it covers
+   * exactly the image's bounds and shares its rotation and opacity. */
+  private _planImageClass(): string {
+    const { sheet, invert } = planSheetStyle(this.planSheet, this.dark);
+    return `${sheet ? "" : "no-sheet"} ${invert ? "invert" : ""}`.trim();
+  }
+
   private _renderBackgroundOverlay() {
     if (!this.backgroundImageUrl) return nothing;
     const { scale, offsetX, offsetY } = this._svgTransform();
@@ -2382,6 +2392,7 @@ export class FloorplanCanvas extends LitElement {
         style="transform: translate(${tx}px, ${ty}px) scale(${bgScale});"
       >
         <img
+          class=${this._planImageClass()}
           src=${this.backgroundImageUrl}
           style="width:${BASE_WIDTH}px; height:${this._naturalHeight}px; opacity:${
             this.backgroundOpacity
@@ -2408,6 +2419,7 @@ export class FloorplanCanvas extends LitElement {
         style="transform: translate(${tx}px, ${ty}px) scale(${overlayScale});"
       >
         <img
+          class=${this._planImageClass()}
           src=${this.alignOverlay.imageUrl}
           style="width:${BASE_WIDTH}px; height:${this._alignNaturalHeight}px; opacity:${
             this.alignOverlay.opacity

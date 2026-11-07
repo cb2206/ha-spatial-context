@@ -4,6 +4,8 @@ Notes for each release are also on the [releases page](https://github.com/Gremin
 
 ## Fork changes
 
+1.0.1-fork.7: an Appearance menu in the panel header (also on the Settings page) switches just this panel between System, Light and Dark, stored per browser. A separate Plan background option (Auto / White / None) puts a white sheet behind floor-plan images even on a dark panel, or none at all for transparent plans.
+
 1.0.1-fork.6: use `DeviceEntry.config_entry_id` instead of the deprecated `config_entries` (stops working in HA 2027.10), and point the manifest's documentation and issue tracker at the fork.
 
 1.0.1-fork.5: the UniFi Wi-Fi layer reads clients from the controller's raw data. aiounifi names the AP `access_point_mac`, so `ap_mac` was always empty and no client links were found (upstream `wifi_mesh.py` has the same problem).
