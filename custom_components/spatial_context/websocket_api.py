@@ -387,14 +387,29 @@ _SETTINGS_SCHEMA = {
     ),
     vol.Optional("auto_save", default=True): bool,
     vol.Optional("debug_logging", default=False): bool,
-    vol.Optional("llm_api_enabled", default=False): bool,
-    vol.Optional("camera_background_enabled", default=False): bool,
+    # Fork: no default, so a panel that does not send these (an older,
+    # cached bundle) keeps the stored value instead of switching it off.
+    # Today's panel always sends both.
+    vol.Optional("llm_api_enabled"): bool,
+    vol.Optional("camera_background_enabled"): bool,
     vol.Optional("hidden_device_ids", default=list): vol.All(
         [_TEXT], vol.Length(max=_MAX_ITEMS)
     ),
     vol.Optional("open_view", default="saved"): vol.In(["saved", "fit"]),
     vol.Optional("weak_link_threshold_db", default=25): vol.All(
         vol.Coerce(int), vol.Range(min=0, max=60)
+    ),
+    # Fork: no default. The panel does not know these (they are set with the
+    # update_settings service), so a save that leaves one out keeps the
+    # stored value instead of resetting it (see ws_save_settings).
+    vol.Optional("floor_height_m"): vol.All(
+        vol.Coerce(float), vol.Range(min=1.5, max=10)
+    ),
+    vol.Optional("rf_path_loss_exponent"): vol.All(
+        vol.Coerce(float), vol.Range(min=1.6, max=4.0)
+    ),
+    vol.Optional("rf_slab_loss_db"): vol.All(
+        vol.Coerce(float), vol.Range(min=0, max=40)
     ),
 }
 
@@ -426,11 +441,18 @@ async def ws_save_settings(
     connection: websocket_api.ActiveConnection,
     msg: dict,
 ) -> None:
-    """Replace-save app-wide settings."""
+    """Save app-wide settings over the stored ones."""
     # Every schema key (a vol.Required/Optional marker; `.schema` is its
-    # name) — Optional ones are always present, filled from their default.
+    # name) that the message carries — Optional ones with a default are
+    # always present. A key the sender does not know (one without a
+    # default) keeps its stored value, so the panel cannot reset it.
+    stored = await async_get_settings(hass)
     await async_save_settings(
-        hass, {key.schema: msg[key.schema] for key in _SETTINGS_SCHEMA}
+        hass,
+        {
+            **stored,
+            **{key.schema: msg[key.schema] for key in _SETTINGS_SCHEMA if key.schema in msg},
+        },
     )
     await async_sync_llm_api(hass)
     connection.send_result(msg["id"], {"success": True})
@@ -553,6 +575,53 @@ async def ws_get_wifi_mesh(
 
 @websocket_api.require_admin
 @websocket_api.websocket_command(
+    {
+        vol.Required("type"): "spatial_context/get_links",
+        vol.Optional("layer"): vol.In(("zigbee", "thread", "wifi", "bluetooth")),
+        vol.Optional("network"): _TEXT,
+        vol.Optional("refresh", default=False): bool,
+    }
+)
+@websocket_api.async_response
+async def ws_get_links(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict,
+) -> None:
+    """Fork: the stored radio-link snapshots (see links/store.py).
+
+    Serves the last stored topology by default, which costs nothing.
+    `refresh` re-reads the integrations for the asked layer (or all) first;
+    that is still cheap except for a Zigbee2MQTT house with no cached map,
+    where it waits for one network-map scan.
+    """
+    # Imported here, like zha_mesh in zigbee_mesh.py, so the link providers
+    # load only when links are actually asked for.
+    from .links import store as link_store
+    from .links.common import compact_snapshot_dict
+
+    layer = msg.get("layer")
+    try:
+        if msg["refresh"]:
+            await link_store.async_refresh(hass, [layer] if layer else None)
+        snapshots = await link_store.async_get_snapshots(hass, layer, msg.get("network"))
+    except Exception as err:  # noqa: BLE001 - surface any failure to the frontend, not an unhandled rejection
+        connection.send_error(
+            msg["id"], "get_links_failed", _client_error(err, "Radio link lookup")
+        )
+        return
+    store = link_store.async_get_store(hass)
+    connection.send_result(
+        msg["id"],
+        {
+            "last_refresh": store.last_refresh if store else None,
+            "snapshots": [compact_snapshot_dict(s) for s in snapshots],
+        },
+    )
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
     {vol.Required("type"): "spatial_context/get_bluetooth_devices"}
 )
 @callback
@@ -630,6 +699,7 @@ def async_register_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_zigbee_mesh)
     websocket_api.async_register_command(hass, ws_get_wifi_mesh)
     websocket_api.async_register_command(hass, ws_get_bluetooth_devices)
+    websocket_api.async_register_command(hass, ws_get_links)
     websocket_api.async_register_command(hass, ws_version)
     websocket_api.async_register_command(hass, ws_debug_log)
     websocket_api.async_register_command(hass, ws_debug_report)

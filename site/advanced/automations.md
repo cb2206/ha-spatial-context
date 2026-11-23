@@ -4,12 +4,15 @@ title: Automations and Actions
 
 # Automations and Actions
 
-Spatial Context registers two actions for use in automations and scripts. Both are for administrators, the same as the panel. An automation can always run them. A script runs as the person who started it, so a script started by a non-administrator (from a dashboard button or a voice assistant, for example) is refused, and so is a direct call from Developer Tools or the API with a non-administrator's token.
+Spatial Context registers these actions for use in automations and scripts. All of them are for administrators, the same as the panel. An automation can always run them. A script runs as the person who started it, so a script started by a non-administrator (from a dashboard button or a voice assistant, for example) is refused, and so is a direct call from Developer Tools or the API with a non-administrator's token.
 
 | Action | Effect |
 |---|---|
-| `spatial_context.get_map` | Returns the whole layout as the action's response. See [The Map Data](/ai/map-data). |
+| `spatial_context.get_map` | Returns the whole layout as the action's response. See [The Map Data](/ai/map-data). Optional `floor`, `room`, `compact` and `include_links` narrow it. |
+| `spatial_context.query` | Returns one compact AI answer: `summary`, `device_context`, `path`, `weak_links` or `room`. See [Using the Map with AI](/ai/using-ai). |
+| `spatial_context.update_settings` | Changes the AI and radio-model settings that have no control in the panel yet. |
 | `spatial_context.refresh_zigbee_mesh` | Runs a fresh Zigbee scan and caches the result, so the Zigbee layer opens with current data. |
+| `spatial_context.refresh_links` | Re-reads the radio links (ZHA, Zigbee2MQTT, Matter/Thread, UniFi Wi-Fi) into the link store; optional `layers`. It runs by itself every 30 minutes and never starts a Zigbee scan, except a first Zigbee2MQTT network map when none has been fetched yet. |
 
 ## Read the Map
 

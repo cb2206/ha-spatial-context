@@ -2,6 +2,20 @@
 
 Notes for each release are also on the [releases page](https://github.com/Greminn/ha-spatial-context/releases). This file starts at 1.0.0 and summarises the beta releases before it.
 
+## Fork changes
+
+This is the `next` branch of a fork (cb2206/ha-spatial-context): upstream **1.0.1-beta.5** plus the features below. Everything the fork offered upstream earlier (the review fixes, UniFi client data, the version notice, the plan background, bulk place, rooms from areas, walls from rooms, PDF/SVG/camera backgrounds) is now upstream's version.
+
+1.0.1-fork.10 (restart needed): rebased onto upstream 1.0.1-beta.5.
+
+- Link store: ZHA neighbour and route tables, Zigbee2MQTT's cached map, Matter/Thread neighbour and route tables (one snapshot per Thread network) and UniFi Wi-Fi associations, read into a persisted store. It refreshes two minutes after start and then every 30 minutes, and never scans. Also `spatial_context.refresh_links` and the `spatial_context/get_links` WebSocket command.
+- Spatial engine (`spatial/`): metric positions and heights, the room from the pin, room adjacency, walls and floor slabs between two devices, an RF path-loss model, and findings (weak links, unplaced infrastructure, isolated routers, far parents, area mismatches, uncalibrated levels).
+- `spatial_context.query`: compact answers (`summary`, `device_context`, `path`, `weak_links`, `room`) for ha-mcp, scripts and REST.
+- The same five answers are LLM tools (`spatial_context__summary` and so on) on upstream's **Spatial Context** LLM API, next to `GetSpatialMap`, behind its switch (Settings > AI Assistants). They used to sit on the "Home Assistant" API behind a separate `llm_tools_enabled` switch; a stored `llm_tools_enabled: true` now turns the Spatial Context API on (which also offers `GetSpatialMap`), and the old key is dropped with the next settings save. **After upgrading, select the Spatial Context API** in the MCP Server or conversation agent that used the tools. `update_settings` still accepts `llm_tools_enabled` as the old name of `llm_api_enabled`.
+- `spatial_context.get_map` gains optional `floor`, `room`, `compact` and `include_links` fields; with none (or all at their defaults) its output is unchanged. Its `floor`/`room` file devices by where their pin sits; `GetSpatialMap` files them by their stored room.
+- `spatial_context.update_settings` sets `floor_height_m`, `rf_path_loss_exponent`, `rf_slab_loss_db`, `weak_link_threshold_db` and `llm_api_enabled`. A settings save from the panel keeps settings it does not send instead of resetting them, including the AI and camera switches when an older cached panel leaves them out.
+- Dropped: the fork's System/Light/Dark switch (upstream left it out).
+
 ## Unreleased
 
 ### Added

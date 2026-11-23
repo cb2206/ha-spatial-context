@@ -8,6 +8,7 @@ and just logs on an older one.
 from __future__ import annotations
 
 from collections.abc import Callable
+import logging
 
 import probatio
 
@@ -17,6 +18,8 @@ from homeassistant.helpers import llm
 
 from .const import DOMAIN
 from .export import MapFilterError, async_get_map_data, filter_map_data
+
+_LOGGER = logging.getLogger(__name__)
 
 TOOL_NAME = "GetSpatialMap"
 
@@ -90,7 +93,8 @@ class GetSpatialMapTool(llm.Tool):
 
 
 class SpatialContextAPI(llm.API):
-    """The `spatial_context` LLM API: one tool, the map."""
+    """The `spatial_context` LLM API: the map, plus the fork's spatial tools
+    (spatial_tools.py)."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         super().__init__(hass=hass, id=DOMAIN, name="Spatial Context")
@@ -98,11 +102,20 @@ class SpatialContextAPI(llm.API):
     async def async_get_api_instance(
         self, llm_context: llm.LLMContext
     ) -> llm.APIInstance:
+        # Fork: imported here so a problem in the spatial tools never takes
+        # GetSpatialMap down with it.
+        try:
+            from .spatial_tools import PROMPT as spatial_prompt, spatial_tools
+
+            extra_tools, extra_prompt = spatial_tools(), " " + spatial_prompt
+        except Exception:  # noqa: BLE001 - keep the map tool working regardless
+            _LOGGER.warning("Could not load the Spatial Context spatial tools", exc_info=True)
+            extra_tools, extra_prompt = [], ""
         return llm.APIInstance(
             api=self,
-            api_prompt=_API_PROMPT,
+            api_prompt=_API_PROMPT + extra_prompt,
             llm_context=llm_context,
-            tools=[GetSpatialMapTool()],
+            tools=[GetSpatialMapTool(), *extra_tools],
         )
 
 

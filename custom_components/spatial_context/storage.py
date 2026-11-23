@@ -360,14 +360,40 @@ def _empty_settings() -> dict[str, Any]:
         # How many dB worse than the walls predict a Zigbee link may be
         # before the Connectivity Map flags it (#29). 0 turns the check off.
         "weak_link_threshold_db": 25,
+        # Fork: settings of the spatial engine (spatial/), which the panel has
+        # no controls for; set with the update_settings service.
+        # Height of one level, metres: a floor at HA `level` n sits at
+        # n x this, for distances between floors (spatial/model.py).
+        "floor_height_m": 3.0,
+        # Path-loss exponent of the RF model (spatial/rf.py): 2.0 is free
+        # space, the panel's model; indoor paths are often 2.5-3.5.
+        "rf_path_loss_exponent": 2.0,
+        # Loss through one floor slab, dB, for links between levels (#27
+        # measured 10-17 dB).
+        "rf_slab_loss_db": 13,
     }
+
+
+# Fork: the spatial tools used to have their own switch. They now sit on the
+# Spatial Context LLM API (#53), so the old switch, while still stored, turns
+# that API on. It disappears from storage with the next settings save.
+_LEGACY_LLM_TOOLS_KEY = "llm_tools_enabled"
+
+
+def _migrate_settings(stored: dict[str, Any]) -> dict[str, Any]:
+    if _LEGACY_LLM_TOOLS_KEY not in stored:
+        return stored
+    migrated = dict(stored)
+    legacy = bool(migrated.pop(_LEGACY_LLM_TOOLS_KEY))
+    migrated["llm_api_enabled"] = bool(migrated.get("llm_api_enabled")) or legacy
+    return migrated
 
 
 async def async_get_settings(hass: HomeAssistant) -> dict[str, Any]:
     """Return the stored app-wide settings, or defaults."""
     async with _lock(hass):
         data = await _async_load_all(hass)
-        return {**_empty_settings(), **(data.get("settings") or {})}
+        return {**_empty_settings(), **_migrate_settings(data.get("settings") or {})}
 
 
 async def async_save_settings(hass: HomeAssistant, settings: dict[str, Any]) -> None:
