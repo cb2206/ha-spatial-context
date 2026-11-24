@@ -116,6 +116,18 @@ class ZhaMeshTest(unittest.TestCase):
         with mock.patch.object(zha_mesh, "_device_infos", return_value=infos):
             self.assertEqual(zha_mesh.coordinator_device_ids(None), {"dev-c"})
 
+    def test_mesh_infrastructure_lists_coordinators_and_routers(self) -> None:
+        _, zha_mesh = _setup()
+        infos = [
+            _info("c", "Coordinator", []),
+            _info("r", "Router", []),
+            _info("e", "EndDevice", []),
+        ]
+        with mock.patch.object(zha_mesh, "_device_infos", return_value=infos):
+            self.assertEqual(zha_mesh.mesh_infrastructure_device_ids(None), {"dev-c", "dev-r"})
+        with mock.patch.object(zha_mesh, "_device_infos", side_effect=RuntimeError("no ZHA")):
+            self.assertEqual(zha_mesh.mesh_infrastructure_device_ids(None), set())
+
     def test_coordinator_device_ids_is_empty_when_zha_is_unavailable(self) -> None:
         _, zha_mesh = _setup()
         with mock.patch.object(

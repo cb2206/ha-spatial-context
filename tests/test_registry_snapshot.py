@@ -107,6 +107,8 @@ def _list(devices: list, entities: list, coordinators: set, layouts: dict | None
     stubs.stub(
         "sc_snapshot_test.zha_mesh",
         coordinator_device_ids=lambda hass: set(coordinators),
+        # Fork: registry_snapshot lists coordinators and routers.
+        mesh_infrastructure_device_ids=lambda hass: set(coordinators),
     )
     stubs.load("sc_snapshot_test", "placeable_rules")
     snapshot = stubs.load("sc_snapshot_test", "registry_snapshot")
@@ -153,6 +155,19 @@ class CoordinatorWithoutEntitiesTest(unittest.TestCase):
 
     def test_a_coordinator_missing_from_the_registry_is_skipped(self) -> None:
         self.assertEqual(_list([], [], {"gone"}), [])
+
+    def test_a_router_with_only_an_identify_button_is_listed_once(self) -> None:
+        """Fork: a wall panel's Zigbee router (enabled: an Identify button;
+        RSSI/LQI sensors disabled) is offered once, keyed on the device."""
+        lqi = _entity("sensor.nsp1_lqi", "r1")
+        lqi.disabled_by = "integration"
+        rows = _list([_device("r1", name="nsp1")], [_entity("button.nsp1_identify", "r1"), lqi], {"r1"})
+        self.assertEqual([(r["entity_id"], r["device_name"]) for r in rows], [("device.r1", "nsp1")])
+
+    def test_a_disabled_device_is_not_offered(self) -> None:
+        device = _device("r1")
+        device.disabled_by = "user"
+        self.assertEqual(_list([device], [], {"r1"}), [])
 
 
 if __name__ == "__main__":

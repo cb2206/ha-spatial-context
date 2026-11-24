@@ -33,7 +33,9 @@ PROMPT = (
     "gap_db is how much weaker the measured signal is than predicted. Zigbee "
     "signal is LQI, which is ordinal and vendor-specific: use it to rank "
     "links, not as a measurement. Unplaced devices and uncalibrated levels "
-    "have no geometry."
+    "have no geometry. A link row with position \"approximate\" has a "
+    "bulk-placed end (room-accurate distance); \"unjudged\" means the "
+    "distance is a guess, so ignore its gap_db."
 )
 
 _LOGGER = logging.getLogger(__name__)

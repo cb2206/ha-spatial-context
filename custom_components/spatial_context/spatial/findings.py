@@ -6,7 +6,14 @@ ids (ai.py turns them into short ids). Types:
 
 - weak_link: measured signal far below what distance, walls and floors
   predict (`weak_link_threshold_db`, 0 turns it off; same rule as the
-  panel's Connectivity Map).
+  panel's Connectivity Map, canvas/weak-link.ts `canJudgeLink`, which
+  uses the pin's stored room and a flat distance). Each link gets a
+  `confidence`:
+  "confirmed" (neither end bulk-placed), "unjudged" (an end is bulk-placed
+  and both ends are in the same room or under 2 m apart, so the distance
+  is an artefact of the placement) or "approximate" (an end is bulk-placed
+  but the rooms are apart, so the distance is room-accurate). Unjudged
+  links are never weak; approximate ones are marked and at most medium.
 - unplaced_infrastructure: a router, coordinator, border router or access
   point with links but no pin, so nothing about its coverage can be judged.
 - area_mismatch: the room a pin sits in belongs to a different HA area than
@@ -31,6 +38,9 @@ INFRA_ROLES = frozenset(
 MESH_ROUTER_ROLES = frozenset({"coordinator", "router", "border_router", "leader"})
 FAR_PARENT_M = 10.0
 FAR_PARENT_WALLS = 3
+# Below this, a distance from a bulk-placed pin says nothing (pins in one
+# room are spread at 0.5 m whatever the real positions).
+UNJUDGED_DISTANCE_M = 2.0
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
@@ -45,6 +55,8 @@ class LinkReport:
     kinds: list[str]
     parent: str | None  # node key
     report: dict[str, Any]
+    # "confirmed" | "approximate" | "unjudged" (see the module docstring).
+    confidence: str = "confirmed"
 
 
 @dataclass(slots=True)
@@ -59,6 +71,36 @@ class Analysis:
     links: list[LinkReport] = field(default_factory=list)
     findings: list[dict[str, Any]] = field(default_factory=list)
     networks: list[dict[str, Any]] = field(default_factory=list)
+    # Links that look weak but were not judged (confidence "unjudged").
+    unjudged_weak: int = 0
+
+    def is_approximate(self, device_id: str | None) -> bool:
+        device = self.model.devices.get(device_id) if device_id else None
+        return bool(device is not None and device.placed and device.approximate)
+
+    def link_confidence(self, a: str | None, b: str | None, report: dict[str, Any]) -> str:
+        if not (self.is_approximate(a) or self.is_approximate(b)):
+            return "confirmed"
+        dev_a = self.model.devices.get(a) if a else None
+        dev_b = self.model.devices.get(b) if b else None
+        same_room = bool(
+            dev_a is not None
+            and dev_b is not None
+            and dev_a.room_id is not None
+            and dev_a.room_id == dev_b.room_id
+        )
+        distance = report.get("distance_m")
+        if same_room or distance is None or distance < UNJUDGED_DISTANCE_M:
+            return "unjudged"
+        return "approximate"
+
+    def looks_weak(self, link: "LinkReport") -> bool:
+        gap = link.report.get("gap_db")
+        return self.threshold_db > 0 and gap is not None and gap > self.threshold_db
+
+    def is_weak(self, link: "LinkReport") -> bool:
+        """The weak-link verdict every output uses."""
+        return self.looks_weak(link) and link.confidence != "unjudged"
 
     def node_device(self, layer: str, network: str, key: str) -> Any:
         node = self.nodes.get((layer, network, key))
@@ -100,6 +142,7 @@ def analyse(model: Any) -> Analysis:
     for obs in aggregate_pairs(model.snapshots):
         dev_a = analysis.node_device(obs.layer, obs.network, obs.a)
         dev_b = analysis.node_device(obs.layer, obs.network, obs.b)
+        report = evaluate(model, obs, dev_a, dev_b, analysis.params)
         analysis.links.append(
             LinkReport(
                 layer=obs.layer,
@@ -110,7 +153,12 @@ def analyse(model: Any) -> Analysis:
                 b=dev_b.device_id if dev_b else None,
                 kinds=sorted(obs.kinds),
                 parent=obs.parent,
-                report=evaluate(model, obs, dev_a, dev_b, analysis.params),
+                report=report,
+                confidence=analysis.link_confidence(
+                    dev_a.device_id if dev_a else None,
+                    dev_b.device_id if dev_b else None,
+                    report,
+                ),
             )
         )
 
@@ -165,15 +213,23 @@ def _weak_links(analysis: Analysis) -> list[dict[str, Any]]:
         return []
     out = []
     for link in analysis.links:
-        gap = link.report.get("gap_db")
-        if gap is None or gap <= analysis.threshold_db:
+        if not analysis.looks_weak(link):
             continue
+        if link.confidence == "unjudged":
+            analysis.unjudged_weak += 1
+            continue
+        gap = link.report["gap_db"]
+        rough = link.confidence == "approximate"
+        high = gap > analysis.threshold_db + 15 and not rough
+        detail = {"layer": link.layer, **_rf_detail(link.report)}
+        if rough:
+            detail["approximate"] = True
         out.append(
             {
                 "type": "weak_link",
-                "severity": "high" if gap > analysis.threshold_db + 15 else "medium",
+                "severity": "high" if high else "medium",
                 "devices": [link.a, link.b],
-                "detail": {"layer": link.layer, **_rf_detail(link.report)},
+                "detail": detail,
             }
         )
     return out
@@ -283,19 +339,22 @@ def _far_parents(analysis: Analysis) -> list[dict[str, Any]]:
         if child is None or child.role != "end_device":
             continue
         report = link.report
-        if report["distance_m"] is None:
+        if report["distance_m"] is None or link.confidence == "unjudged":
             continue
         solid = sum(1 for w in report["walls"] if not w["opening"])
         if report["distance_m"] <= FAR_PARENT_M and solid < FAR_PARENT_WALLS:
             continue
         parent_device = link.a if link.parent == link.a_key else link.b
         child_device = link.b if parent_device == link.a else link.a
+        detail = {"layer": link.layer, **_rf_detail(report), "solid_walls": solid}
+        if link.confidence != "confirmed":
+            detail["approximate"] = True
         out.append(
             {
                 "type": "far_parent",
                 "severity": "medium",
                 "devices": [child_device, parent_device],
-                "detail": {"layer": link.layer, **_rf_detail(report), "solid_walls": solid},
+                "detail": detail,
             }
         )
     return out

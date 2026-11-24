@@ -6,6 +6,11 @@ Notes for each release are also on the [releases page](https://github.com/Gremin
 
 This is the `next` branch of a fork (cb2206/ha-spatial-context): upstream **1.0.1-beta.5** plus the features below. Everything the fork offered upstream earlier (the review fixes, UniFi client data, the version notice, the plan background, bulk place, rooms from areas, walls from rooms, PDF/SVG/camera backgrounds) is now upstream's version.
 
+1.0.1-fork.11 (restart needed):
+
+- Weak links and bulk-placed (approximate) pins: a link is not judged when one end is bulk-placed and both ends are in the same room or under 2 m apart, because pins dropped in a room sit half a metre apart whatever the real distance. Rooms apart, the finding stays, marked `approximate` and at most medium (far_parent findings are marked too). The same rule applies to the `weak_links` and `device_context` answers (link rows carry `position: approximate | unjudged`, `weak_links` reports `not_judged`), the summary's notes, and the panel's Connectivity Map.
+- ZHA routers with no placeable entity (for example a wall panel's Zigbee router, whose RSSI/LQI sensors ZHA disables by default) are offered in Place device, the same way upstream offers an entity-less coordinator (#60); disabled devices are not offered.
+
 1.0.1-fork.10 (restart needed): rebased onto upstream 1.0.1-beta.5.
 
 - Link store: ZHA neighbour and route tables, Zigbee2MQTT's cached map, Matter/Thread neighbour and route tables (one snapshot per Thread network) and UniFi Wi-Fi associations, read into a persisted store. It refreshes two minutes after start and then every 30 minutes, and never scans. Also `spatial_context.refresh_links` and the `spatial_context/get_links` WebSocket command.

@@ -180,6 +180,10 @@ def link_rows(analysis: Any, device_ids: set[str]) -> list[dict[str, Any]]:
             row["predicted_dbm"] = round(r["predicted_dbm"])
             if r["gap_db"] is not None:
                 row["gap_db"] = round(r["gap_db"])
+            if link.confidence != "confirmed":
+                # Fork: "approximate" (rooms apart) or "unjudged" (distance
+                # is a guess), see spatial/findings.py.
+                row["position"] = link.confidence
         rows.append(row)
     return rows
 

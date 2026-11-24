@@ -54,11 +54,24 @@ def coordinator_device_ids(hass: HomeAssistant) -> set[str]:
     """Device-registry ids of ZHA's coordinator(s), or none when ZHA is not
     running. Used to let a coordinator that exposes no entities be placed
     (#60); any failure just means no extra devices are offered."""
+    return _device_ids_of_type(hass, {"Coordinator"})
+
+
+def mesh_infrastructure_device_ids(hass: HomeAssistant) -> set[str]:
+    """Fork: device-registry ids of ZHA's coordinator(s) and routers. A
+    router can expose no placeable entity either: a wall panel's Zigbee
+    router (SONOFF NSPanel Pro) has only an Identify button and RSSI/LQI
+    sensors, which ZHA disables by default. Routers are what a mesh
+    diagnosis most needs placed."""
+    return _device_ids_of_type(hass, {"Coordinator", "Router"})
+
+
+def _device_ids_of_type(hass: HomeAssistant, device_types: set[str]) -> set[str]:
     try:
         return {
             info["device_reg_id"]
             for info in _device_infos(hass)
-            if info.get("device_type") == "Coordinator" and info.get("device_reg_id")
+            if info.get("device_type") in device_types and info.get("device_reg_id")
         }
     except Exception:  # noqa: BLE001 - ZHA absent, not loaded, or changed
         return set()

@@ -29,6 +29,7 @@ import { floorToProperty, propertyToFloor } from "./canvas/property-mapping";
 import { rayBoxExit } from "./canvas/geometry";
 import {
   DEFAULT_WEAK_LINK_THRESHOLD_DB,
+  canJudgeLink,
   checkWeakLink,
   weakLinkToFlag,
 } from "./canvas/weak-link";
@@ -273,7 +274,8 @@ export function meshLinksForFloor(ctx: MeshContext): ResolvedMeshLink[] {
       const weak =
         ctx.networkType === "zigbee" &&
         link.quality !== "unknown" &&
-        link.value !== undefined
+        link.value !== undefined &&
+        canJudgeLink(fromPin, toPin, ctx.layout.scale)
           ? weakLinkToFlag(
               checkWeakLink({
                 from: [fromPin.x, fromPin.y],

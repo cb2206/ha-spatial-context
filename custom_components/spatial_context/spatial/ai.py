@@ -245,6 +245,9 @@ class SpatialAI:
             row["meas"] = r["measured_kind"]
             if r["gap_db"] is not None:
                 row["gap_db"] = _db(r["gap_db"])
+        if link.confidence != "confirmed" and r["distance_m"] is not None:
+            # "approximate": room-accurate; "unjudged": distance is a guess.
+            row["position"] = link.confidence
         return row
 
     def _approximate(self) -> list[str]:
@@ -270,6 +273,12 @@ class SpatialAI:
             notes.append(
                 f"{rough} devices have approximate positions (bulk-placed in their room, "
                 "not where they really are): their distances and walls crossed are rough."
+            )
+        if analysis.unjudged_weak:
+            notes.append(
+                f"{analysis.unjudged_weak} links look weak but were not judged: a bulk-placed "
+                "end sits in the same room or under 2 m away, so the distance is a guess. "
+                "Drag or confirm the pins to judge them."
             )
         unmapped = sum(n["unmapped_nodes"] for n in analysis.networks)
         if unmapped:
@@ -426,8 +435,7 @@ class SpatialAI:
         rows = []
         for link in links:
             row = self._link_row(link, me=did)
-            gap = link.report.get("gap_db")
-            if analysis.threshold_db > 0 and gap is not None and gap > analysis.threshold_db:
+            if analysis.is_weak(link):
                 row["weak"] = True
             rows.append(row)
         # Weak links are already marked on their link row.
@@ -550,6 +558,7 @@ class SpatialAI:
         analysis = self.analysis
         level_id = self.resolve_level(level).id if level else None
         checked = 0
+        unjudged = 0
         rows = []
         for link in analysis.links:
             if layer and link.layer != layer:
@@ -563,14 +572,22 @@ class SpatialAI:
             if link.report.get("gap_db") is None:
                 continue
             checked += 1
-            if analysis.threshold_db > 0 and link.report["gap_db"] > analysis.threshold_db:
+            if analysis.is_weak(link):
                 rows.append(link)
+            elif analysis.looks_weak(link):
+                unjudged += 1
         rows.sort(key=lambda link: -link.report["gap_db"])
         out: dict[str, Any] = {
             "threshold_db": analysis.threshold_db,
             "checked": checked,
             "weak": _capped([self._link_row(link) for link in rows], WEAK_MAX),
         }
+        if unjudged:
+            out["not_judged"] = unjudged
+            out["note_positions"] = (
+                "not_judged: links that look weak, but a bulk-placed end is in the same room "
+                "or under 2 m away, so the distance is a guess."
+            )
         if analysis.threshold_db <= 0:
             out["note"] = "The weak-link check is off (threshold 0)."
         if any(link.report["measured_kind"] == "lqi" for link in rows):

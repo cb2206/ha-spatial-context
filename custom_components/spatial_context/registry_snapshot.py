@@ -20,7 +20,7 @@ from homeassistant.helpers import (
 from homeassistant.loader import async_get_integration
 
 from .placeable_rules import device_is_placeable, entity_domain_is_placeable
-from .zha_mesh import coordinator_device_ids
+from .zha_mesh import mesh_infrastructure_device_ids
 from .storage import (
     PROPERTY_LOCATION_ID,
     async_get_all_layouts,
@@ -374,13 +374,19 @@ async def async_list_placeable_entities(hass: HomeAssistant) -> list[dict[str, A
     # A ZHA coordinator can have no enabled entities at all (a ZBT-2, an
     # SLZB-06 radio), so it would never reach the list above. Offer it as an
     # entity-less entry keyed on the device, so it can be placed (#60).
-    for device_id in coordinator_device_ids(hass) - placeable_device_ids - {
+    # Fork: the same for ZHA routers with no placeable entity (a wall
+    # panel's router, whose RSSI/LQI sensors ZHA disables by default).
+    for device_id in mesh_infrastructure_device_ids(hass) - placeable_device_ids - {
         e.device_id for e in fallback_entries.values()
     }:
         device = device_registry.async_get(device_id)
         if device is None or not device_is_placeable(
             device.entry_type, device.identifiers
         ):
+            continue
+        # Fork: a disabled device is not offered (its entities are disabled
+        # too, which is what keeps it out of the list above).
+        if getattr(device, "disabled_by", None) is not None:
             continue
         integration_domain = device_integration_domains.get(device_id)
         area = (

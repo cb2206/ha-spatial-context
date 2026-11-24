@@ -180,6 +180,70 @@ class FindingsTest(unittest.TestCase):
         self.assertEqual(len(weak(on)), 1)
         self.assertEqual(weak(off), [])
 
+    def test_weak_links_and_approximate_positions(self) -> None:
+        """A bulk-placed end in the same room as the other, or under 2 m
+        away, leaves the link unjudged; rooms apart, the finding stays,
+        marked approximate and at most medium. Every AI output agrees."""
+        L = self.sp.links
+
+        def run(a, b):
+            pins = [{"device_id": "a", **a}, {"device_id": "b", **b}]
+            snap = L.LinkSnapshot(
+                "zigbee", "z", "t", "t",
+                [L.LinkNode("A", "router", "a"), L.LinkNode("B", "router", "b")],
+                [L.Link("A", "B", "neighbor", L.LinkMetrics(lqi=5, lqi_norm=5.0))],
+            )
+            home = {"floors_meta": [{"floor_id": "f", "name": "F", "level": 0}], "layouts": {"f": _layout(pins)},
+                    "area_names": AREAS, "devices_meta": {}, "snapshots": [snap]}
+            model = spatial_support.build(self.sp, home)
+            analysis = self.sp.findings.analyse(model)
+            weak = [f for f in analysis.findings if f["type"] == "weak_link"]
+            return model, analysis, weak
+
+        approx = {"approximate": True}
+        # Confirmed, same room, 0.5 m: judged as before.
+        _, analysis, weak = run({"x": 10, "y": 10}, {"x": 15, "y": 10})
+        self.assertEqual(analysis.links[0].confidence, "confirmed")
+        self.assertEqual([f["severity"] for f in weak], ["high"])
+        self.assertNotIn("approximate", weak[0]["detail"])
+
+        # One bulk-placed end in the same room: unjudged.
+        model, analysis, weak = run({"x": 10, "y": 10, **approx}, {"x": 15, "y": 10})
+        self.assertEqual(analysis.links[0].confidence, "unjudged")
+        self.assertEqual(weak, [])
+        self.assertEqual(analysis.unjudged_weak, 1)
+        ai = self.sp.ai.SpatialAI(model, analysis)
+        listed = ai.weak_links()
+        self.assertEqual(listed["weak"]["items"] if isinstance(listed["weak"], dict) else listed["weak"], [])
+        self.assertEqual(listed["not_judged"], 1)
+        rows = ai.device_context("a")["links"]
+        rows = rows["items"] if isinstance(rows, dict) else rows
+        self.assertNotIn("weak", rows[0])
+        self.assertEqual(rows[0]["position"], "unjudged")
+        self.assertTrue(any("not judged" in n for n in ai.summary()["approximate"]))
+
+        # Different rooms but under 2 m apart: still unjudged.
+        _, analysis, weak = run({"x": 45, "y": 10, **approx}, {"x": 55, "y": 10, **approx})
+        self.assertEqual(analysis.links[0].confidence, "unjudged")
+        self.assertEqual(weak, [])
+
+        # Both bulk-placed, rooms apart (8 m): kept, marked, at most medium.
+        model, analysis, weak = run({"x": 10, "y": 10, **approx}, {"x": 90, "y": 10, **approx})
+        self.assertEqual(analysis.links[0].confidence, "approximate")
+        self.assertEqual(len(weak), 1)
+        self.assertEqual(weak[0]["severity"], "medium")
+        self.assertTrue(weak[0]["detail"]["approximate"])
+        ai = self.sp.ai.SpatialAI(model, analysis)
+        rows = ai.device_context("a")["links"]
+        rows = rows["items"] if isinstance(rows, dict) else rows
+        self.assertTrue(rows[0]["weak"])
+        self.assertEqual(rows[0]["position"], "approximate")
+        exported = self.sp.map_view.link_rows(analysis, {"a", "b"})
+        self.assertEqual(exported[0]["position"], "approximate")
+
+        # get_map's links say when a distance is a guess.
+        _, analysis, _ = run({"x": 10, "y": 10, **approx}, {"x": 15, "y": 10})
+        self.assertEqual(self.sp.map_view.link_rows(analysis, {"a", "b"})[0]["position"], "unjudged")
 
 if __name__ == "__main__":
     unittest.main()

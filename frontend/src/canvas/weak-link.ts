@@ -81,6 +81,26 @@ export function checkWeakLink(opts: {
   };
 }
 
+/** Below this, a distance from a bulk-placed pin says nothing (pins in one
+ * room are spread at 0.5 m whatever the real positions). */
+export const UNJUDGED_DISTANCE_M = 2;
+
+/** Fork: whether a link between these pins can be judged at all. Not when
+ * an end is bulk-placed (approximate) and both ends are in the same room
+ * or under 2 m apart; the same rule as the backend's spatial engine
+ * (spatial/findings.py). */
+export function canJudgeLink(
+  from: { approximate?: boolean; room_id: string | null; x: number; y: number },
+  to: { approximate?: boolean; room_id: string | null; x: number; y: number },
+  scale: Scale | null,
+): boolean {
+  if (!from.approximate && !to.approximate) return true;
+  if (from.room_id !== null && from.room_id === to.room_id) return false;
+  const perMetre = unitsPerMetre(scale);
+  if (perMetre === null) return false;
+  return distance(from.x, from.y, to.x, to.y) / perMetre >= UNJUDGED_DISTANCE_M;
+}
+
 /** The check, only when it is far enough below the prediction to flag. A
  * threshold of 0 turns the check off. */
 export function weakLinkToFlag(

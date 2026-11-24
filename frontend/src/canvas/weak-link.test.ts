@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canJudgeLink,
   checkWeakLink,
   lqiToDbm,
   unitsPerMetre,
@@ -105,5 +106,46 @@ describe("weakLinkToFlag", () => {
   it("is off at 0 and for no check", () => {
     expect(weakLinkToFlag(check, 0)).toBeNull();
     expect(weakLinkToFlag(null, 15)).toBeNull();
+  });
+});
+
+describe("canJudgeLink (fork)", () => {
+  // 10 units per metre.
+  const scale: Scale = {
+    points: [
+      [0, 0],
+      [100, 0],
+    ],
+    meters: 10,
+  };
+  const pin = (x: number, room: string | null, approximate = false) => ({
+    x,
+    y: 0,
+    room_id: room,
+    approximate,
+  });
+
+  it("judges two confirmed pins as before", () => {
+    expect(canJudgeLink(pin(0, "a"), pin(5, "a"), scale)).toBe(true);
+  });
+
+  it("does not judge a bulk-placed pin in the same room", () => {
+    expect(canJudgeLink(pin(0, "a", true), pin(40, "a"), scale)).toBe(false);
+  });
+
+  it("does not judge a bulk-placed pin under 2 m away", () => {
+    expect(canJudgeLink(pin(45, "a", true), pin(55, "b", true), scale)).toBe(
+      false,
+    );
+  });
+
+  it("judges bulk-placed pins in rooms apart", () => {
+    expect(canJudgeLink(pin(10, "a", true), pin(90, "b", true), scale)).toBe(
+      true,
+    );
+  });
+
+  it("does not judge a bulk-placed pin without a scale", () => {
+    expect(canJudgeLink(pin(10, "a", true), pin(90, "b"), null)).toBe(false);
   });
 });
